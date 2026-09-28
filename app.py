@@ -4,34 +4,35 @@ import pandas as pd
 import numpy as np
 import time
 
-# Mobile Layout Optimization
-st.set_page_config(page_title="OKX Scanner", layout="centered")
+# Mobile Friendly Layout
+st.set_page_config(page_title="OKX Pattern Scanner", layout="centered")
 
-st.title("📲 OKX Pattern Scanner")
+st.title("📲 OKX Chart Pattern Scanner")
 
-# OKX Exchange initialization
+# OKX Exchange
 exchange = ccxt.okx({
     'enableRateLimit': True,
 })
 
+# Pattern Details & Signal Info
 PATTERN_INFO = {
-    "Double Top": {"signal": "🔴 BEARISH Reversal", "detail": "Price M-Shape bana kar neeche gir sakti hai."},
-    "Double Bottom": {"signal": "🟢 BULLISH Reversal", "detail": "Price W-Shape bana kar upar ja sakti hai."},
-    "Head & Shoulders": {"signal": "🔴 BEARISH Reversal", "detail": "Neckline break hone par strong drop expected."},
-    "Inverse Head & Shoulders": {"signal": "🟢 BULLISH Reversal", "detail": "Neckline break hone par upward pump expected."},
-    "Ascending Triangle": {"signal": "🟢 BULLISH Breakout", "detail": "Flat resistance break karke upar jaane ke chance."},
-    "Descending Triangle": {"signal": "🔴 BEARISH Breakout", "detail": "Flat support break karke neeche girne ke chance."},
-    "Symmetrical Triangle": {"signal": "🟡 NEUTRAL Breakout", "detail": "Dono taraf breakout ho sakta hai, wait karein."},
-    "Rising Wedge": {"signal": "🔴 BEARISH Reversal", "detail": "Tightening channel ke baad neeche drop ho sakta hai."},
-    "Falling Wedge": {"signal": "🟢 BULLISH Reversal", "detail": "Tightening channel ke baad upar pump ho sakta hai."},
-    "Channel Up": {"signal": "🟢 BULLISH Trend", "detail": "Upar ki taraf move, support break par bearish."},
-    "Channel Down": {"signal": "🔴 BEARISH Trend", "detail": "Neeche ki taraf move, resistance break par bullish."}
+    "Double Top": {"signal": "🔴 BEARISH Reversal", "detail": "Price M-Shape bana kar resistance se rejection le rahi hai, neeche gir sakti hai."},
+    "Double Bottom": {"signal": "🟢 BULLISH Reversal", "detail": "Price W-Shape bana kar support se bounce ho rahi hai, upar ja sakti hai."},
+    "Head & Shoulders": {"signal": "🔴 BEARISH Reversal", "detail": "Neckline break hone par strong downward move aa sakta hai."},
+    "Inverse Head & Shoulders": {"signal": "🟢 BULLISH Reversal", "detail": "Neckline break hone par strong upward pump aa sakta hai."},
+    "Ascending Triangle": {"signal": "🟢 BULLISH Breakout", "detail": "Flat resistance breakout par upar jaane ke high chances hain."},
+    "Descending Triangle": {"signal": "🔴 BEARISH Breakout", "detail": "Flat support break hone par neeche girne ke chances hain."},
+    "Symmetrical Triangle": {"signal": "🟡 NEUTRAL", "detail": "Dono taraf breakout ho sakta hai, direction confirm hone ka wait karein."},
+    "Rising Wedge": {"signal": "🔴 BEARISH Reversal", "detail": "Range narrow ho rahi hai, support toot-te hi drop aa sakta hai."},
+    "Falling Wedge": {"signal": "🟢 BULLISH Reversal", "detail": "Range narrow ho rahi hai, resistance break hote hi pump ho sakta hai."},
+    "Channel Up": {"signal": "🟢 BULLISH Trend", "detail": "Price upper channel mein hai, lower line break hone par trend badal sakta hai."},
+    "Channel Down": {"signal": "🔴 BEARISH Trend", "detail": "Price lower channel mein hai, upper line break hone par bullish reversal aa sakta hai."}
 }
 
-# --- MOBILE CONTROLS & FILTERS ---
-st.subheader("⚙️ Settings")
+# Mobile Controls Section
+st.subheader("⚙️ Scanner Settings")
 
-# 1. User Timeframe Choice (Multi-select)
+# 1. Custom Timeframe Selection
 selected_tf = st.multiselect(
     "Timeframe select karein:",
     options=['15m', '1h', '4h', '1d'],
@@ -67,7 +68,7 @@ def detect_chart_patterns(df):
     recent_highs = high[-20:]
     recent_lows = low[-20:]
     
-    # Pattern Logic
+    # 10 Chart Patterns Logic
     if abs(recent_highs[-1] - recent_highs[-10]) / recent_highs[-1] < 0.005 and close[-1] < recent_highs[-1]:
         patterns_found.append("Double Top")
         
@@ -103,41 +104,59 @@ def detect_chart_patterns(df):
 
     return list(set(patterns_found))
 
-# --- SCANNING PROCESS ---
-if st.button("🚀 Start Scan", use_container_width=True):
+# --- SCAN BUTTON ---
+if st.button("🚀 Start Pattern Scan", use_container_width=True):
     if not selected_tf:
-        st.error("Baraye mehrbani kam az kam ek Timeframe select karein!")
+        st.error("Khabardar: Kam az kam ek Timeframe select karein!")
     else:
         symbols = get_okx_pairs(coin_limit)
         st.info(f"🔍 Top {len(symbols)} coins scan ho rahe hain selected timeframes par...")
         
         progress_bar = st.progress(0)
         status_text = st.empty()
-        results_container = st.container()
         
         total_steps = len(symbols)
+        found_coins = set() # Har coin ka ek hi result lene ke liye
         
         for idx, symbol in enumerate(symbols):
             status_text.text(f"Scanning ({idx+1}/{total_steps}): {symbol}")
             progress_bar.progress((idx + 1) / total_steps)
             
+            # Agar coin pehle detect ho gaya hai toh skip karein
+            if symbol in found_coins:
+                continue
+
             for tf in selected_tf:
                 try:
                     ohlcv = exchange.fetch_ohlcv(symbol, timeframe=tf, limit=100)
                     df = pd.DataFrame(ohlcv, columns=['time', 'open', 'high', 'low', 'close', 'volume'])
                     
                     patterns = detect_chart_patterns(df)
-                    for p in patterns:
+                    if patterns and symbol not in found_coins:
+                        p = patterns[0] # Ek coin ka sirf EK pattern
                         info = PATTERN_INFO.get(p, {"signal": "N/A", "detail": ""})
                         
-                        # Mobile Display Box (Container)
-                        with results_container:
-                            with st.expander(f"📌 **{symbol}** | TF: `{tf}` | **{p}**", expanded=True):
-                                st.write(f"**Signal:** {info['signal']}")
-                                st.write(f"**Detail:** {info['detail']}")
-                    
+                        # OKX TradingView Direct Link
+                        clean_symbol = symbol.replace("/", "")
+                        tv_url = f"https://www.tradingview.com/chart/?symbol=OKX%3A{clean_symbol}"
+                        
+                        # Mobile Card Display
+                        with st.container():
+                            st.markdown(f"""
+                            ---
+                            ### 📌 **{symbol}**
+                            * **Timeframe:** `{tf}`
+                            * **Pattern:** **{p}**
+                            * **Signal:** {info['signal']}
+                            * **Detail:** {info['detail']}
+                            """)
+                            st.link_button(f"🔗 Open {symbol} Chart on TradingView", tv_url)
+                        
+                        found_coins.add(symbol)
+                        break
+                        
                     time.sleep(0.01)
                 except Exception:
                     continue
 
-        st.success("✅ Scan Mukammal Ho Gaya!")
+        st.success("✅ Scan Complete!")

@@ -1,36 +1,37 @@
+import streamlit as st
 import ccxt
 import pandas as pd
 import numpy as np
 import time
+
+# Page Configuration
+st.set_page_config(page_title="OKX Pattern Scanner", layout="wide")
+st.title("📈 OKX Multi-Timeframe Chart Pattern Scanner")
 
 # OKX Exchange initialization
 exchange = ccxt.okx({
     'enableRateLimit': True,
 })
 
-# Aapke bataye gaye Multi-Timeframes
 TIMEFRAMES = ['15m', '1h', '4h', '1d']
 
-# 10 Patterns aur unki details (Bullish/Bearish)
 PATTERN_INFO = {
-    "Double Top": "BEARISH Reversal (Price Neeche Ja Sakti Hai)",
-    "Double Bottom": "BULLISH Reversal (Price Upar Ja Sakti Hai)",
-    "Head & Shoulders": "BEARISH Reversal (Price Neeche Ja Sakti Hai)",
-    "Inverse Head & Shoulders": "BULLISH Reversal (Price Upar Ja Sakti Hai)",
-    "Ascending Triangle": "BULLISH Continuation/Breakout (Upar Jaane Ke Chance)",
-    "Descending Triangle": "BEARISH Continuation/Breakout (Neeche Girne Ke Chance)",
-    "Symmetrical Triangle": "NEUTRAL (Dono Taraf Breakout Ho Sakta Hai)",
-    "Rising Wedge": "BEARISH Reversal (Neeche Girne Ke Chance)",
-    "Falling Wedge": "BULLISH Reversal (Upar Jaane Ke Chance)",
-    "Channel Up": "BULLISH Trend (Support Break Hone Par Bearish)",
-    "Channel Down": "BEARISH Trend (Resistance Break Hone Par Bullish)"
+    "Double Top": "🔴 BEARISH Reversal (Price Neeche Ja Sakti Hai)",
+    "Double Bottom": "🟢 BULLISH Reversal (Price Upar Ja Sakti Hai)",
+    "Head & Shoulders": "🔴 BEARISH Reversal (Price Neeche Ja Sakti Hai)",
+    "Inverse Head & Shoulders": "🟢 BULLISH Reversal (Price Upar Ja Sakti Hai)",
+    "Ascending Triangle": "🟢 BULLISH Breakout (Upar Jaane Ke Chance)",
+    "Descending Triangle": "🔴 BEARISH Breakout (Neeche Girne Ke Chance)",
+    "Symmetrical Triangle": "🟡 NEUTRAL (Dono Taraf Breakout Ho Sakta Hai)",
+    "Rising Wedge": "🔴 BEARISH Reversal (Neeche Girne Ke Chance)",
+    "Falling Wedge": "🟢 BULLISH Reversal (Upar Jaane Ke Chance)",
+    "Channel Up": "🟢 BULLISH Trend (Support Break Hone Par Bearish)",
+    "Channel Down": "🔴 BEARISH Trend (Resistance Break Hone Par Bullish)"
 }
 
+@st.cache_data(ttl=300)
 def get_okx_top_500_pairs():
-    """OKX se Top 500 USDT pairs fetch karta hai (Gainers + Losers)"""
-    print("OKX Market Data Fetch Ho Raha Hai...")
     tickers = exchange.fetch_tickers()
-    
     usdt_pairs = []
     for symbol, data in tickers.items():
         if symbol.endswith('/USDT') and data.get('quoteVolume') is not None:
@@ -39,14 +40,11 @@ def get_okx_top_500_pairs():
                 'volume': data['quoteVolume'],
                 'change': data.get('percentage', 0)
             })
-    
-    # Volume ke hisab se top 500 filter karta hai
     df = pd.DataFrame(usdt_pairs)
     df = df.sort_values(by='volume', ascending=False).head(500)
     return df['symbol'].tolist()
 
 def detect_chart_patterns(df):
-    """10 Main Chart Patterns detect karne ka logic"""
     patterns_found = []
     close = df['close'].values
     high = df['high'].values
@@ -106,14 +104,22 @@ def detect_chart_patterns(df):
 
     return list(set(patterns_found))
 
-def run_scanner():
+# Start Button
+if st.button("Start Market Scan"):
     symbols = get_okx_top_500_pairs()
-    print(f"Total {len(symbols)} coins scan hone ja rahe hain...\n")
+    st.write(f"🔍 Top {len(symbols)} coins scan ho rahe hain multi-timeframes par...")
+    
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    table_placeholder = st.empty()
     
     results = []
+    total_symbols = 50 # Speed testing ke liye top 50
     
-    # Fast testing ke liye starting me pehle 50 pairs scan karega (Aap 500 tak badha sakte hain)
-    for symbol in symbols[:50]:
+    for idx, symbol in enumerate(symbols[:total_symbols]):
+        status_text.text(f"Scanning ({idx+1}/{total_symbols}): {symbol}")
+        progress_bar.progress((idx + 1) / total_symbols)
+        
         for tf in TIMEFRAMES:
             try:
                 ohlcv = exchange.fetch_ohlcv(symbol, timeframe=tf, limit=100)
@@ -126,22 +132,14 @@ def run_scanner():
                         'Symbol': symbol,
                         'Timeframe': tf,
                         'Pattern': p,
-                        'Details/Bias': info
+                        'Details / Signal': info
                     })
-                    print(f"[FOUND] {symbol} | TF: {tf} | Pattern: {p} --> {info}")
+                    
+                    # Real-time Table Update
+                    table_placeholder.dataframe(pd.DataFrame(results), use_container_width=True)
                 
-                time.sleep(0.02) # API Rate Limit ke liye
-            except Exception as e:
+                time.sleep(0.01)
+            except Exception:
                 continue
 
-    # Summary Output
-    if results:
-        res_df = pd.DataFrame(results)
-        print("\n================ FINAL SCAN RESULTS ================")
-        print(res_df.to_string(index=False))
-    else:
-        print("\nKoi pattern filhal match nahi hua.")
-
-if __name__ == "__main__":
-    run_scanner()
-  
+    st.success("✅ Scanning Complete!")
